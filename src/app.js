@@ -7,6 +7,7 @@ const { limiter } = require('./middleware/rateLimiter');
 const hotelsRouter = require('./routes/hotels');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT ?? 3000;
 
 // --- Security headers ---
@@ -61,3 +62,4 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
