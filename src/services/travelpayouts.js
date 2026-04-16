@@ -83,6 +83,7 @@ async function searchHotels({ destination, checkIn, checkOut, adults = 2, limit 
     timeout: 10_000,
   });
 
+console.log('[searchHotels] Params:', params);
   const hotels = Array.isArray(response.data) ? response.data : (response.data?.hotels ?? []);
 
   return hotels.map((h) => normaliseHotel(h, { checkIn, checkOut, adults, destination }));
