@@ -97,6 +97,7 @@ export default function searchRoutes(hotelDatabase) {
             nearbyPlaces: hotel.nearby_places,
             rating: hotel.rating,
             reviews: hotel.reviews,
+            images: hotel.images,
 
             // Our database data
             lgbtqCertification: {
