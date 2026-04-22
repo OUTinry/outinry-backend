@@ -40,12 +40,29 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http:/
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow server-to-server (no origin header) and whitelisted origins
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow server-to-server (no origin header)
+    if (!origin) {
       callback(null, true);
-    } else {
-      callback(new Error(`CORS: origin ${origin} not allowed`));
+      return;
     }
+
+    // Check exact match
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    // Check regex patterns (for Webflow preview/staging domains)
+    if (
+      /\.lovableproject\.com$/.test(origin) ||
+      /\.lovable\.app$/.test(origin) ||
+      /\.webflow\.io$/.test(origin)
+    ) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`CORS: origin ${origin} not allowed`));
   },
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type'],
