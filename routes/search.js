@@ -165,6 +165,103 @@ export default function searchRoutes(hotelDatabase) {
       res.status(500).json({ error: error.message });
     }
   });
+/**
+   * POST /api/search/hotel/:hotelId
+   * Search pricing for ONE specific hotel
+   *
+   * Request body:
+   * {
+   *   "checkInDate": "2026-05-01",
+   *   "checkOutDate": "2026-05-05",
+   *   "adults": 2,
+   *   "currency": "USD"
+   * }
+   */
+  router.post('/hotel/:hotelId', async (req, res) => {
+    try {
+      const { hotelId } = req.params;
+      const { checkInDate, checkOutDate, adults = 2, currency = 'USD' } = req.body;
 
+      // Validate input
+      if (!checkInDate || !checkOutDate) {
+        return res.status(400).json({ error: 'checkInDate and checkOutDate are required' });
+      }
+
+      console.log(`🏨 Searching pricing for hotel: ${hotelId}`);
+
+      // Step 1: Find the specific hotel in our database
+      const dbHotel = findHotelByName(hotelDatabase, hotelId);
+      
+      if (!dbHotel) {
+        return res.status(404).json({ 
+          error: `Hotel not found in verified database: ${hotelId}` 
+        });
+      }
+
+      console.log(`✅ Found hotel: ${dbHotel.name}`);
+
+      // Step 2: Call SearchAPI for live pricing
+      const searchApiUrl = 'https://www.searchapi.io/api/v1/search';
+      const searchParams = {
+        engine: 'google_hotels',
+        q: `${dbHotel.name}`,
+        check_in_date: checkInDate,
+        check_out_date: checkOutDate,
+        adults,
+        currency,
+        api_key: process.env.SEARCHAPI_KEY
+      };
+
+      const apiResponse = await axios.get(searchApiUrl, { params: searchParams });
+
+      if (!apiResponse.data.properties || apiResponse.data.properties.length === 0) {
+        return res.status(404).json({
+          error: 'No pricing found for this hotel'
+        });
+      }
+
+      const hotelResult = apiResponse.data.properties[0];
+      const nights = Math.ceil((new Date(checkOutDate) - new Date(checkInDate)) / (1000 * 60 * 60 * 24));
+
+      // Step 3: Return single hotel with pricing
+      res.json({
+        hotelId,
+        hotelName: dbHotel.name,
+        checkIn: checkInDate,
+        checkOut: checkOutDate,
+        nights,
+        adults,
+        currency,
+        
+        // Pricing
+        pricePerNight: hotelResult.price_per_night,
+        totalPrice: hotelResult.total_price,
+        
+        // Hotel details
+        rating: hotelResult.rating,
+        reviews: hotelResult.reviews,
+        description: hotelResult.description,
+        images: hotelResult.images,
+        
+        // LGBTQ+ certification
+        lgbtqCertification: {
+          sources: dbHotel.certificationSources,
+          level: dbHotel.certificationLevel,
+          summary: dbHotel.certificationSummary
+        },
+        
+        // Booking links
+        affiliateLinks: createAffiliateLinks(hotelResult, dbHotel),
+        
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      console.error('Hotel search error:', error.message);
+      res.status(500).json({
+        error: error.message || 'Failed to fetch hotel pricing'
+      });
+    }
+  });
   return router;
 }
