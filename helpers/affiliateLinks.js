@@ -1,20 +1,18 @@
 /**
  * Generate Booking.com affiliate link
+ * Stay22 script on the website will automatically rewrite this link with tracking
  * @param {string} hotelName - Name of hotel
  * @param {string} bookingId - Booking.com property ID (optional)
  * @returns {string} Affiliate URL
  */
 export function generateBookingLink(hotelName, bookingId) {
-  const affiliateId = process.env.BOOKING_AFFILIATE_ID || '';
-
   if (bookingId) {
     // Direct link to property if we have the ID
-    return `https://www.booking.com/hotel/${bookingId}.html?aid=${affiliateId}`;
+    return `https://www.booking.com/hotel/${bookingId}.html`;
   }
-
   // Fallback: search for hotel name
   const encodedName = encodeURIComponent(hotelName);
-  return `https://www.booking.com/searchresults.html?ss=${encodedName}&aid=${affiliateId}`;
+  return `https://www.booking.com/searchresults.html?ss=${encodedName}`;
 }
 
 /**
@@ -27,7 +25,6 @@ export function generateExpediaLink(hotelName, destination) {
   const affiliateId = process.env.EXPEDIA_AFFILIATE_ID || '';
   const encodedName = encodeURIComponent(hotelName);
   const encodedDest = encodeURIComponent(destination);
-
   return `https://www.expedia.com/Hotel-Search?q=${encodedName}+${encodedDest}?partnerId=${affiliateId}`;
 }
 
@@ -40,7 +37,6 @@ export function generateExpediaLink(hotelName, destination) {
 export function generateAgodaLink(hotelName, destination) {
   const affiliateId = process.env.AGODA_AFFILIATE_ID || '';
   const encodedDest = encodeURIComponent(destination);
-
   return `https://www.agoda.com/search?ss=${encodedDest}&cid=${affiliateId}`;
 }
 
@@ -54,7 +50,7 @@ export function createAffiliateLinks(hotel, dbHotel = null) {
   const hotelName = hotel.name || '';
   const destination = hotel.city || '';
   const bookingId = dbHotel?.bookingId || null;
-
+  
   return {
     booking: generateBookingLink(hotelName, bookingId),
     expedia: generateExpediaLink(hotelName, destination),
