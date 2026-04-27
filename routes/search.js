@@ -280,7 +280,8 @@ export default function searchRoutes(hotelDatabase) {
           level: dbHotel.certificationLevel,
           summary: dbHotel.certificationSummary
         },
-        affiliateLinks: createAffiliateLinks(hotelResult, dbHotel, checkInDate, checkOutDate),
+        // Use dbHotel.name (verified) instead of SearchAPI result to ensure correct hotel name in affiliate links
+        affiliateLinks: createAffiliateLinks({ ...hotelResult, name: dbHotel.name }, dbHotel, checkInDate, checkOutDate),
         timestamp: new Date().toISOString()
       });
 
