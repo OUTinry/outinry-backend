@@ -106,8 +106,8 @@ export default function searchRoutes(hotelDatabase) {
               summary: dbHotel?.certificationSummary
             },
 
-            // Affiliate links
-            affiliateLinks: createAffiliateLinks(hotel, dbHotel)
+            // Affiliate links with check-in/checkout dates
+            affiliateLinks: createAffiliateLinks(hotel, dbHotel, checkInDate, checkOutDate)
           };
         });
 
@@ -133,6 +133,128 @@ export default function searchRoutes(hotelDatabase) {
 
       res.status(500).json({
         error: error.message || 'Failed to search hotels'
+      });
+    }
+  });
+
+  /**
+   * GET /api/search/hotel/:hotelName
+   * Get pricing for a specific hotel with dates
+   * Query params: checkIn (YYYY-MM-DD), checkOut (YYYY-MM-DD), adults (default 2)
+   */
+  router.get('/hotel/:hotelName', async (req, res) => {
+    try {
+      const { hotelName } = req.params;
+      const { checkIn, checkOut, adults = 2 } = req.query;
+
+      // Convert slug to proper name (bourbon-sao-paulo-express-hotel → Bourbon Sao Paulo Express Hotel)
+      const properName = hotelName
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+
+      console.log(`🏨 Searching for hotel: ${properName}`);
+      console.log(`📅 Dates: ${checkIn} to ${checkOut}, ${adults} guests`);
+
+      // Validate inputs
+      if (!checkIn || !checkOut) {
+        return res.status(400).json({ error: 'checkIn and checkOut dates are required' });
+      }
+
+      // Find hotel in database
+      const dbHotel = findHotelByName(hotelDatabase, properName);
+      if (!dbHotel) {
+        return res.status(404).json({
+          error: `Hotel "${properName}" not found in verified LGBTQ+ database`,
+          attempted: properName
+        });
+      }
+
+      console.log(`✅ Found hotel in database: ${dbHotel.name}`);
+
+      // Call SearchAPI for live pricing for this specific hotel
+      const searchApiUrl = 'https://www.searchapi.io/api/v1/search';
+      const searchParams = {
+        engine: 'google_hotels',
+        q: `${dbHotel.name}`,
+        check_in_date: checkIn,
+        check_out_date: checkOut,
+        adults,
+        currency: 'USD',
+        api_key: process.env.SEARCHAPI_KEY
+      };
+
+      console.log(`🔍 Calling SearchAPI for "${dbHotel.name}"...`);
+      const apiResponse = await axios.get(searchApiUrl, { params: searchParams });
+
+      if (!apiResponse.data.properties || apiResponse.data.properties.length === 0) {
+        return res.json({
+          hotel: dbHotel.name,
+          checkIn,
+          checkOut,
+          message: 'No pricing data available for these dates',
+          lgbtqCertification: {
+            sources: dbHotel.certificationSources,
+            level: dbHotel.certificationLevel,
+            summary: dbHotel.certificationSummary
+          }
+        });
+      }
+
+      console.log(`📍 SearchAPI returned ${apiResponse.data.properties.length} results`);
+
+      // Find our hotel in the SearchAPI results
+      const searchResult = apiResponse.data.properties.find(p =>
+        p.name?.toLowerCase() === dbHotel.name.toLowerCase()
+      ) || apiResponse.data.properties[0]; // Fallback to first result if exact match not found
+
+      console.log(`✨ Found hotel in SearchAPI results: ${searchResult.name}`);
+
+      // Build response with affiliate links including dates
+      const response = {
+        name: searchResult.name,
+        description: searchResult.description,
+        city: searchResult.city,
+        country: searchResult.country,
+        coordinates: searchResult.gps_coordinates,
+        checkInTime: searchResult.check_in_time,
+        checkOutTime: searchResult.check_out_time,
+        pricePerNight: searchResult.price_per_night,
+        totalPrice: searchResult.total_price,
+        nearbyPlaces: searchResult.nearby_places,
+        rating: searchResult.rating,
+        reviews: searchResult.reviews,
+        images: searchResult.images,
+
+        // LGBTQ+ certification from our database
+        lgbtqCertification: {
+          sources: dbHotel.certificationSources,
+          level: dbHotel.certificationLevel,
+          summary: dbHotel.certificationSummary
+        },
+
+        // Affiliate links with dates included
+        affiliateLinks: createAffiliateLinks(searchResult, dbHotel, checkIn, checkOut),
+
+        // Booking info
+        checkIn,
+        checkOut,
+        guests: parseInt(adults),
+        timestamp: new Date().toISOString()
+      };
+
+      res.json(response);
+
+    } catch (error) {
+      console.error('Hotel search error:', error.message);
+
+      if (error.response?.status === 401) {
+        return res.status(401).json({ error: 'Invalid SearchAPI key' });
+      }
+
+      res.status(500).json({
+        error: error.message || 'Failed to search for hotel',
+        details: error.response?.data || null
       });
     }
   });
