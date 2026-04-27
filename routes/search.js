@@ -77,7 +77,8 @@ export default function searchRoutes(hotelDatabase) {
             },
 
             // Affiliate links with check-in/checkout dates
-            affiliateLinks: createAffiliateLinks(hotel, dbHotel, checkInDate, checkOutDate)
+            // Use dbHotel.name (verified) instead of SearchAPI result to ensure correct hotel name in affiliate links
+            affiliateLinks: createAffiliateLinks({ ...hotel, name: dbHotel.name }, dbHotel, checkInDate, checkOutDate)
           };
         });
 
@@ -174,7 +175,7 @@ export default function searchRoutes(hotelDatabase) {
 
       // Build response with affiliate links including dates
       const response = {
-        name: searchResult.name,
+        name: dbHotel.name,
         description: searchResult.description,
         city: searchResult.city,
         country: searchResult.country,
@@ -196,7 +197,8 @@ export default function searchRoutes(hotelDatabase) {
         },
 
         // Affiliate links with dates included
-        affiliateLinks: createAffiliateLinks(searchResult, dbHotel, checkIn, checkOut),
+        // Use dbHotel.name (verified) instead of SearchAPI result to ensure correct hotel name in affiliate links
+        affiliateLinks: createAffiliateLinks({ ...searchResult, name: dbHotel.name }, dbHotel, checkIn, checkOut),
 
         // Booking info
         checkIn,
