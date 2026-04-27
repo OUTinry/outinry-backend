@@ -9,21 +9,11 @@ export default function searchRoutes(hotelDatabase) {
   /**
    * POST /api/search
    * Search for verified LGBTQ+ hotels with live pricing
-   *
-   * Request body:
-   * {
-   *   "destination": "Lisbon",
-   *   "checkInDate": "2026-05-01",
-   *   "checkOutDate": "2026-05-05",
-   *   "adults": 2,
-   *   "currency": "USD"
-   * }
    */
   router.post('/', async (req, res) => {
     try {
       const { destination, checkInDate, checkOutDate, adults = 2, currency = 'USD' } = req.body;
 
-      // Validate input
       if (!destination) {
         return res.status(400).json({ error: 'destination is required' });
       }
@@ -33,13 +23,9 @@ export default function searchRoutes(hotelDatabase) {
 
       console.log(`🔍 Searching for hotels in ${destination}...`);
 
-      // Step 1: Get list of verified hotels in destination from our database
-      console.log(`📊 Database has ${hotelDatabase.length} total hotels`);
       const verifiedHotels = filterHotelsByCity(hotelDatabase, destination);
-      console.log(`🏨 filterHotelsByCity returned ${verifiedHotels.length} hotels for "${destination}"`);
 
       if (verifiedHotels.length === 0) {
-        console.log(`⚠️  No verified LGBTQ+ hotels found in ${destination}`);
         return res.json({
           destination,
           results: [],
@@ -48,9 +34,6 @@ export default function searchRoutes(hotelDatabase) {
         });
       }
 
-      console.log(`✅ Found ${verifiedHotels.length} verified hotels in ${destination}`);
-
-      // Step 2: Call SearchAPI for live pricing
       const searchApiUrl = 'https://www.searchapi.io/api/v1/search';
       const searchParams = {
         engine: 'google_hotels',
@@ -72,34 +55,21 @@ export default function searchRoutes(hotelDatabase) {
         });
       }
 
-      console.log(`📍 SearchAPI returned ${apiResponse.data.properties.length} results`);
-
-      // Step 3: Filter SearchAPI results to only include verified LGBTQ+ hotels
       const filteredResults = apiResponse.data.properties
-        .filter(hotel => {
-          const dbHotel = findHotelByName(hotelDatabase, hotel.name);
-          return dbHotel !== null;
-        })
+        .filter(hotel => findHotelByName(hotelDatabase, hotel.name) !== null)
         .map(hotel => {
           const dbHotel = findHotelByName(hotelDatabase, hotel.name);
 
           return {
-            // SearchAPI data
             name: hotel.name,
             description: hotel.description,
             city: hotel.city,
             country: hotel.country,
-            coordinates: hotel.gps_coordinates,
-            checkInTime: hotel.check_in_time,
-            checkOutTime: hotel.check_out_time,
             pricePerNight: hotel.price_per_night,
             totalPrice: hotel.total_price,
-            nearbyPlaces: hotel.nearby_places,
             rating: hotel.rating,
             reviews: hotel.reviews,
             images: hotel.images,
-
-            // Our database data
             lgbtqCertification: {
               sources: dbHotel?.certificationSources,
               level: dbHotel?.certificationLevel,
@@ -111,9 +81,6 @@ export default function searchRoutes(hotelDatabase) {
           };
         });
 
-      console.log(`✨ Filtered to ${filteredResults.length} verified LGBTQ+ hotels with live pricing`);
-
-      // Step 4: Return results
       res.json({
         destination,
         checkIn: checkInDate,
@@ -126,11 +93,6 @@ export default function searchRoutes(hotelDatabase) {
 
     } catch (error) {
       console.error('Search error:', error.message);
-
-      if (error.response?.status === 401) {
-        return res.status(401).json({ error: 'Invalid SearchAPI key' });
-      }
-
       res.status(500).json({
         error: error.message || 'Failed to search hotels'
       });
@@ -139,7 +101,7 @@ export default function searchRoutes(hotelDatabase) {
 
   /**
    * GET /api/search/hotel/:hotelName
-   * Get pricing for a specific hotel with dates
+   * Get pricing for a specific hotel with dates (modal endpoint)
    * Query params: checkIn (YYYY-MM-DD), checkOut (YYYY-MM-DD), adults (default 2)
    */
   router.get('/hotel/:hotelName', async (req, res) => {
@@ -260,31 +222,71 @@ export default function searchRoutes(hotelDatabase) {
   });
 
   /**
-   * GET /api/search/test
-   * Quick test endpoint (no database filtering)
+   * POST /api/search/hotel/:hotelId
+   * Get pricing for a specific hotel (legacy endpoint, kept for backwards compatibility)
    */
-  router.get('/test', async (req, res) => {
+  router.post('/hotel/:hotelId', async (req, res) => {
     try {
-      const { destination = 'Lisbon', checkIn = '2026-05-01', checkOut = '2026-05-05' } = req.query;
+      const { hotelId } = req.params;
+      const { checkInDate, checkOutDate, adults = 2, currency = 'USD' } = req.body;
 
-      const response = await axios.get('https://www.searchapi.io/api/v1/search', {
-        params: {
-          engine: 'google_hotels',
-          q: `hotels in ${destination}`,
-          check_in_date: checkIn,
-          check_out_date: checkOut,
-          api_key: process.env.SEARCHAPI_KEY
-        }
-      });
+      if (!checkInDate || !checkOutDate) {
+        return res.status(400).json({ error: 'checkInDate and checkOutDate are required' });
+      }
+
+      const dbHotel = findHotelByName(hotelDatabase, hotelId);
+      if (!dbHotel) {
+        return res.status(404).json({ error: `Hotel not found: ${hotelId}` });
+      }
+
+      const searchApiUrl = 'https://www.searchapi.io/api/v1/search';
+      const searchParams = {
+        engine: 'google_hotels',
+        q: `${dbHotel.name}`,
+        check_in_date: checkInDate,
+        check_out_date: checkOutDate,
+        adults,
+        currency,
+        api_key: process.env.SEARCHAPI_KEY
+      };
+
+      const apiResponse = await axios.get(searchApiUrl, { params: searchParams });
+
+      if (!apiResponse.data.properties || apiResponse.data.properties.length === 0) {
+        return res.status(404).json({ error: 'No pricing found for this hotel' });
+      }
+
+      const hotelResult = apiResponse.data.properties[0];
+      const nights = Math.ceil((new Date(checkOutDate) - new Date(checkInDate)) / (1000 * 60 * 60 * 24));
 
       res.json({
-        message: 'SearchAPI test (no filtering)',
-        destination,
-        rawResultsCount: response.data.properties?.length || 0,
-        sampleResult: response.data.properties?.[0] || null
+        hotelId,
+        hotelName: dbHotel.name,
+        checkIn: checkInDate,
+        checkOut: checkOutDate,
+        nights,
+        adults,
+        currency,
+        pricePerNight: hotelResult.price_per_night,
+        totalPrice: hotelResult.total_price,
+        rating: hotelResult.rating,
+        reviews: hotelResult.reviews,
+        description: hotelResult.description,
+        images: hotelResult.images,
+        lgbtqCertification: {
+          sources: dbHotel.certificationSources,
+          level: dbHotel.certificationLevel,
+          summary: dbHotel.certificationSummary
+        },
+        affiliateLinks: createAffiliateLinks(hotelResult, dbHotel, checkInDate, checkOutDate),
+        timestamp: new Date().toISOString()
       });
+
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('Hotel search error:', error.message);
+      res.status(500).json({
+        error: error.message || 'Failed to fetch hotel pricing'
+      });
     }
   });
 
