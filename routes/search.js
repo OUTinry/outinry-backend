@@ -52,6 +52,7 @@ export default function searchRoutes(hotelDatabase) {
       let userCurrency = currency;
       if (!userCurrency) {
         const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || '0.0.0.0';
+        const { getUserCurrency } = await import('../utils/currencyConverter.js');
         userCurrency = await getUserCurrency(clientIp);
       }
 
@@ -181,31 +182,32 @@ export default function searchRoutes(hotelDatabase) {
   });
 
   /**
-   * POST /api/search/hotel/:hotelId
-   * Search for a specific hotel with live pricing (used by destination modal)
+   * POST /api/search/hotel/:hotelName
+   * Search for a specific hotel by name with live pricing (used by destination modal)
    */
-  router.post('/hotel/:hotelId', async (req, res) => {
+  router.post('/hotel/:hotelName', async (req, res) => {
     try {
-      const { hotelId } = req.params;
+      const { hotelName } = req.params;
       const { checkInDate, checkOutDate, adults = 2, currency } = req.body;
 
       // Prioritize currency from request body, fallback to IP geolocation
       let userCurrency = currency;
       if (!userCurrency) {
         const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || '0.0.0.0';
+        const { getUserCurrency } = await import('../utils/currencyConverter.js');
         userCurrency = await getUserCurrency(clientIp);
       }
 
-      // Find hotel in database by ID
-      const dbHotel = hotelDatabase.find(h => h.id === hotelId);
+      // Find hotel in database by name
+      const dbHotel = findHotelByName(hotelDatabase, hotelName);
       if (!dbHotel) {
-        return res.status(404).json({ error: 'Hotel not found' });
+        return res.status(404).json({ error: 'Hotel not found in verified database' });
       }
 
       const searchApiUrl = 'https://www.searchapi.io/api/v1/search';
       const searchParams = {
         engine: 'google_hotels',
-        q: `hotels in ${dbHotel.city}`,
+        q: `${dbHotel.name} hotel in ${dbHotel.city}`,
         check_in_date: checkInDate,
         check_out_date: checkOutDate,
         adults,
@@ -214,7 +216,7 @@ export default function searchRoutes(hotelDatabase) {
       };
 
       const apiResponse = await axios.get(searchApiUrl, { params: searchParams });
-      const hotelResult = apiResponse.data.properties?.find(h => findHotelByName(hotelDatabase, h.name)?.id === hotelId);
+      const hotelResult = apiResponse.data.properties?.find(h => findHotelByName(hotelDatabase, h.name)?.name.toLowerCase() === dbHotel.name.toLowerCase());
 
       if (!hotelResult) {
         return res.status(404).json({ error: 'Hotel not found in pricing data' });
@@ -224,7 +226,6 @@ export default function searchRoutes(hotelDatabase) {
       const convertedTotalPrice = await convertPriceObject(hotelResult.total_price, userCurrency);
 
       return res.json({
-        hotelId,
         name: hotelResult.name,
         city: hotelResult.city,
         country: hotelResult.country,
