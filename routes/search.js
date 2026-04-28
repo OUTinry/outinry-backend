@@ -12,7 +12,7 @@ export default function searchRoutes(hotelDatabase) {
    */
   router.post('/', async (req, res) => {
     try {
-      const { destination, checkInDate, checkOutDate, adults = 2, currency: req.query.currency || 'USD', } = req.body;
+      const { destination, checkInDate, checkOutDate, adults = 2, currency = 'USD' } = req.body;
 
       if (!destination) {
         return res.status(400).json({ error: 'destination is required' });
