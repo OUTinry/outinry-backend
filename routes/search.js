@@ -3,6 +3,7 @@ import axios from 'axios';
 import { findHotelByName, filterHotelsByCity } from '../helpers/hotelDatabase.js';
 import { createAffiliateLinks } from '../helpers/affiliateLinks.js';
 import { getUserCurrency, convertPrice } from '../utils/currencyConverter.js';
+import { normalizeCityName } from '../utils/cityNormalizer.js';
 
 export default function searchRoutes(hotelDatabase) {
   const router = express.Router();
@@ -63,24 +64,28 @@ export default function searchRoutes(hotelDatabase) {
         return res.status(400).json({ error: 'checkInDate and checkOutDate are required' });
       }
 
-      console.log(`🔍 Searching for hotels in ${destination}... [Currency: ${userCurrency}]`);
+      // Normalize the city name (handles "Greater London" → "london", etc.)
+      const normalizedDestination = normalizeCityName(destination);
+      console.log(`[/api/search] User input: "${destination}" → Normalized: "${normalizedDestination}"`);
 
-      const verifiedHotels = filterHotelsByCity(hotelDatabase, destination);
+      console.log(`🔍 Searching for hotels in ${normalizedDestination}... [Currency: ${userCurrency}]`);
+
+      const verifiedHotels = filterHotelsByCity(hotelDatabase, normalizedDestination);
 
       if (verifiedHotels.length === 0) {
         return res.json({
-          destination,
+          destination: normalizedDestination,
           results: [],
           verifiedHotelsInCity: 0,
           userCurrency,
-          message: `We don't yet have verified LGBTQ+ hotels listed in ${destination}`
+          message: `We don't yet have verified LGBTQ+ hotels listed in ${normalizedDestination}`
         });
       }
 
       const searchApiUrl = 'https://www.searchapi.io/api/v1/search';
       const searchParams = {
         engine: 'google_hotels',
-        q: `hotels in ${destination}`,
+        q: `hotels in ${normalizedDestination}`,
         check_in_date: checkInDate,
         check_out_date: checkOutDate,
         adults,
@@ -92,7 +97,7 @@ export default function searchRoutes(hotelDatabase) {
 
       if (!apiResponse.data.properties || apiResponse.data.properties.length === 0) {
         return res.json({
-          destination,
+          destination: normalizedDestination,
           results: [],
           userCurrency,
           message: 'No hotels found in SearchAPI results'
@@ -131,7 +136,7 @@ export default function searchRoutes(hotelDatabase) {
       );
 
       return res.json({
-        destination,
+        destination: normalizedDestination,
         checkIn: checkInDate,
         checkOut: checkOutDate,
         resultsCount: filteredResults.length,
