@@ -1,5 +1,5 @@
-const axios = require('axios');
-const NodeCache = require('node-cache');
+import axios from 'axios';
+import NodeCache from 'node-cache';
 
 // Cache exchange rates for 24 hours (86,400 seconds)
 const rateCache = new NodeCache({ stdTTL: 86400 });
