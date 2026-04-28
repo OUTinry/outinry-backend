@@ -2,6 +2,7 @@ import express from 'express';
 import axios from 'axios';
 import { findHotelByName, filterHotelsByCity } from '../helpers/hotelDatabase.js';
 import { createAffiliateLinks } from '../helpers/affiliateLinks.js';
+import { getUserCurrency, convertPrice } from '../utils/currencyConverter.js';
 
 export default function searchRoutes(hotelDatabase) {
   const router = express.Router();
@@ -12,7 +13,11 @@ export default function searchRoutes(hotelDatabase) {
    */
   router.post('/', async (req, res) => {
     try {
-      const { destination, checkInDate, checkOutDate, adults = 2, currency = 'USD' } = req.body;
+      const { destination, checkInDate, checkOutDate, adults = 2 } = req.body;
+
+      // Get user's currency from IP geolocation
+      const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || '0.0.0.0';
+      const userCurrency = await getUserCurrency(clientIp);
 
       if (!destination) {
         return res.status(400).json({ error: 'destination is required' });
@@ -21,7 +26,7 @@ export default function searchRoutes(hotelDatabase) {
         return res.status(400).json({ error: 'checkInDate and checkOutDate are required' });
       }
 
-      console.log(`🔍 Searching for hotels in ${destination}...`);
+      console.log(`🔍 Searching for hotels in ${destination}... [Currency: ${userCurrency}]`);
 
       const verifiedHotels = filterHotelsByCity(hotelDatabase, destination);
 
@@ -30,6 +35,7 @@ export default function searchRoutes(hotelDatabase) {
           destination,
           results: [],
           verifiedHotelsInCity: 0,
+          userCurrency,
           message: `We don't yet have verified LGBTQ+ hotels listed in ${destination}`
         });
       }
@@ -41,7 +47,7 @@ export default function searchRoutes(hotelDatabase) {
         check_in_date: checkInDate,
         check_out_date: checkOutDate,
         adults,
-        currency,
+        currency: 'USD', // Always request USD, we'll convert
         api_key: process.env.SEARCHAPI_KEY
       };
 
@@ -51,36 +57,44 @@ export default function searchRoutes(hotelDatabase) {
         return res.json({
           destination,
           results: [],
+          userCurrency,
           message: 'No hotels found in SearchAPI results'
         });
       }
 
-      const filteredResults = apiResponse.data.properties
-        .filter(hotel => findHotelByName(hotelDatabase, hotel.name) !== null)
-        .map(hotel => {
-          const dbHotel = findHotelByName(hotelDatabase, hotel.name);
+      const filteredResults = await Promise.all(
+        apiResponse.data.properties
+          .filter(hotel => findHotelByName(hotelDatabase, hotel.name) !== null)
+          .map(async (hotel) => {
+            const dbHotel = findHotelByName(hotelDatabase, hotel.name);
 
-          return {
-            name: hotel.name,
-            description: hotel.description,
-            city: hotel.city,
-            country: hotel.country,
-            pricePerNight: hotel.price_per_night,
-            totalPrice: hotel.total_price,
-            rating: hotel.rating,
-            reviews: hotel.reviews,
-            images: hotel.images,
-            lgbtqCertification: {
-              sources: dbHotel?.certificationSources,
-              level: dbHotel?.certificationLevel,
-              summary: dbHotel?.certificationSummary
-            },
+            // Convert prices from USD to user's currency
+            const convertedPricePerNight = await convertPrice(hotel.price_per_night, 'USD', userCurrency);
+            const convertedTotalPrice = await convertPrice(hotel.total_price, 'USD', userCurrency);
 
-            // Affiliate links with check-in/checkout dates
-            // Use dbHotel.name (verified) instead of SearchAPI result to ensure correct hotel name in affiliate links
-            affiliateLinks: createAffiliateLinks({ ...hotel, name: dbHotel.name }, dbHotel, checkInDate, checkOutDate)
-          };
-        });
+            return {
+              name: hotel.name,
+              description: hotel.description,
+              city: hotel.city,
+              country: hotel.country,
+              pricePerNight: convertedPricePerNight,
+              totalPrice: convertedTotalPrice,
+              currency: userCurrency,
+              rating: hotel.rating,
+              reviews: hotel.reviews,
+              images: hotel.images,
+              lgbtqCertification: {
+                sources: dbHotel?.certificationSources,
+                level: dbHotel?.certificationLevel,
+                summary: dbHotel?.certificationSummary
+              },
+
+              // Affiliate links with check-in/checkout dates
+              // Use dbHotel.name (verified) instead of SearchAPI result to ensure correct hotel name in affiliate links
+              affiliateLinks: createAffiliateLinks({ ...hotel, name: dbHotel.name }, dbHotel, checkInDate, checkOutDate)
+            };
+          })
+      );
 
       res.json({
         destination,
@@ -88,6 +102,7 @@ export default function searchRoutes(hotelDatabase) {
         checkOut: checkOutDate,
         resultsCount: filteredResults.length,
         results: filteredResults,
+        userCurrency,
         verifiedHotelsInCity: verifiedHotels.length,
         timestamp: new Date().toISOString()
       });
@@ -110,13 +125,17 @@ export default function searchRoutes(hotelDatabase) {
       const { hotelName } = req.params;
       const { checkIn, checkOut, adults = 2 } = req.query;
 
+      // Get user's currency from IP geolocation
+      const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || '0.0.0.0';
+      const userCurrency = await getUserCurrency(clientIp);
+
       // Convert slug to proper name (bourbon-sao-paulo-express-hotel → Bourbon Sao Paulo Express Hotel)
       const properName = hotelName
         .split('-')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
 
-      console.log(`🏨 Searching for hotel: ${properName}`);
+      console.log(`🏨 Searching for hotel: ${properName} [Currency: ${userCurrency}]`);
       console.log(`📅 Dates: ${checkIn} to ${checkOut}, ${adults} guests`);
 
       // Validate inputs
@@ -143,7 +162,7 @@ export default function searchRoutes(hotelDatabase) {
         check_in_date: checkIn,
         check_out_date: checkOut,
         adults,
-        currency: req.query.currency || 'USD',
+        currency: 'USD', // Always request USD, we'll convert
         api_key: process.env.SEARCHAPI_KEY
       };
 
@@ -155,6 +174,7 @@ export default function searchRoutes(hotelDatabase) {
           hotel: dbHotel.name,
           checkIn,
           checkOut,
+          userCurrency,
           message: 'No pricing data available for these dates',
           lgbtqCertification: {
             sources: dbHotel.certificationSources,
@@ -173,6 +193,10 @@ export default function searchRoutes(hotelDatabase) {
 
       console.log(`✨ Found hotel in SearchAPI results: ${searchResult.name}`);
 
+      // Convert prices from USD to user's currency
+      const convertedPricePerNight = await convertPrice(searchResult.price_per_night, 'USD', userCurrency);
+      const convertedTotalPrice = await convertPrice(searchResult.total_price, 'USD', userCurrency);
+
       // Build response with affiliate links including dates
       const response = {
         name: dbHotel.name,
@@ -182,8 +206,9 @@ export default function searchRoutes(hotelDatabase) {
         coordinates: searchResult.gps_coordinates,
         checkInTime: searchResult.check_in_time,
         checkOutTime: searchResult.check_out_time,
-        pricePerNight: searchResult.price_per_night,
-        totalPrice: searchResult.total_price,
+        pricePerNight: convertedPricePerNight,
+        totalPrice: convertedTotalPrice,
+        currency: userCurrency,
         nearbyPlaces: searchResult.nearby_places,
         rating: searchResult.rating,
         reviews: searchResult.reviews,
@@ -230,7 +255,11 @@ export default function searchRoutes(hotelDatabase) {
   router.post('/hotel/:hotelId', async (req, res) => {
     try {
       const { hotelId } = req.params;
-      const { checkInDate, checkOutDate, adults = 2, currency = 'USD' } = req.body;
+      const { checkInDate, checkOutDate, adults = 2 } = req.body;
+
+      // Get user's currency from IP geolocation
+      const clientIp = req.headers['x-forwarded-for']?.split(',')[0] || req.ip || '0.0.0.0';
+      const userCurrency = await getUserCurrency(clientIp);
 
       if (!checkInDate || !checkOutDate) {
         return res.status(400).json({ error: 'checkInDate and checkOutDate are required' });
@@ -248,7 +277,7 @@ export default function searchRoutes(hotelDatabase) {
         check_in_date: checkInDate,
         check_out_date: checkOutDate,
         adults,
-        currency,
+        currency: 'USD', // Always request USD, we'll convert
         api_key: process.env.SEARCHAPI_KEY
       };
 
@@ -261,6 +290,10 @@ export default function searchRoutes(hotelDatabase) {
       const hotelResult = apiResponse.data.properties[0];
       const nights = Math.ceil((new Date(checkOutDate) - new Date(checkInDate)) / (1000 * 60 * 60 * 24));
 
+      // Convert prices from USD to user's currency
+      const convertedPricePerNight = await convertPrice(hotelResult.price_per_night, 'USD', userCurrency);
+      const convertedTotalPrice = await convertPrice(hotelResult.total_price, 'USD', userCurrency);
+
       res.json({
         hotelId,
         hotelName: dbHotel.name,
@@ -268,9 +301,9 @@ export default function searchRoutes(hotelDatabase) {
         checkOut: checkOutDate,
         nights,
         adults,
-        currency,
-        pricePerNight: hotelResult.price_per_night,
-        totalPrice: hotelResult.total_price,
+        currency: userCurrency,
+        pricePerNight: convertedPricePerNight,
+        totalPrice: convertedTotalPrice,
         rating: hotelResult.rating,
         reviews: hotelResult.reviews,
         description: hotelResult.description,
