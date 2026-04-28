@@ -122,7 +122,7 @@ async function convertPrice(amount, fromCurrency, toCurrency) {
   }
 }
 
-module.exports = {
+export {
   getUserCurrency,
   getExchangeRates,
   convertPrice
