@@ -19,7 +19,6 @@ const countryToCurrency = {
  */
 async function getUserCurrency(clientIp) {
   try {
-    // Use ip-api.com (free, no API key needed)
     const response = await axios.get(`http://ip-api.com/json/${clientIp}`, {
       timeout: 3000
     });
@@ -35,7 +34,6 @@ async function getUserCurrency(clientIp) {
     console.warn(`⚠ Geolocation failed for IP ${clientIp}:`, error.message);
   }
 
-  // Fallback to default
   const defaultCurrency = process.env.DEFAULT_CURRENCY || 'USD';
   console.log(`ℹ Using default currency: ${defaultCurrency}`);
   return defaultCurrency;
@@ -106,19 +104,33 @@ async function convertPrice(amount, fromCurrency, toCurrency) {
   }
 
   try {
-    const rates = await getExchangeRates(fromCurrency);
-    const rate = rates[toCurrency];
-
-    if (!rate) {
-      console.warn(`⚠ No rate found for ${fromCurrency} → ${toCurrency}`);
-      return amount; // Return original if no rate available
+    // Always get rates with EUR as base (that's what ECB provides)
+    const rates = await getExchangeRates('EUR');
+    
+    // If fromCurrency is USD, we need to convert it to EUR first
+    let amountInEUR = amount;
+    if (fromCurrency !== 'EUR') {
+      // We need the rate for fromCurrency relative to EUR
+      // But ECB only gives us EUR as base, so we need to invert
+      if (!rates[fromCurrency]) {
+        console.warn(`⚠ Currency ${fromCurrency} not found in ECB rates`);
+        return amount;
+      }
+      amountInEUR = amount / rates[fromCurrency];
     }
 
-    const converted = amount * rate;
-    return Math.round(converted * 100) / 100; // Round to 2 decimals
+    // Now convert from EUR to target currency
+    const toRate = rates[toCurrency];
+    if (!toRate) {
+      console.warn(`⚠ Currency ${toCurrency} not found in ECB rates`);
+      return amount;
+    }
+
+    const converted = amountInEUR * toRate;
+    return Math.round(converted * 100) / 100;
   } catch (error) {
     console.error('Conversion error:', error.message);
-    return amount; // Return original on error
+    return amount;
   }
 }
 
