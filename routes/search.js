@@ -143,7 +143,7 @@ export default function searchRoutes(hotelDatabase) {
         check_in_date: checkIn,
         check_out_date: checkOut,
         adults,
-        currency: 'USD',
+        currency: req.query.currency || 'USD',
         api_key: process.env.SEARCHAPI_KEY
       };
 
