@@ -72,6 +72,12 @@ async function getExchangeRates(baseCurrency = 'EUR') {
 
     // Add EUR as base (rate = 1)
     rates['EUR'] = 1;
+    
+    // Add USD if not present in ECB data
+    if (!rates['USD']) {
+      rates['USD'] = 1.1; // Approximate EUR/USD rate
+      console.log(`ℹ Added USD with approximate rate: 1.1`);
+    }
 
     // If requesting non-EUR base, convert rates
     let finalRates = rates;
