@@ -119,15 +119,25 @@ export function generateAgodaLink(hotelName, destination, checkinDate, checkoutD
  * @returns {Object} Links object with affiliate URLs
  */
 export function createAffiliateLinks(hotel, dbHotel = null, checkinDate = null, checkoutDate = null) {
-  const hotelName = hotel.name || '';
-  const destination = hotel.city || '';
-  const bookingId = dbHotel?.bookingId || null;
+  // Handle both string and object inputs for hotel parameter
+  let hotelName = '';
+  let destination = '';
+  
+  if (typeof hotel === 'string') {
+    hotelName = hotel;
+    destination = dbHotel?.city || '';
+  } else if (typeof hotel === 'object' && hotel !== null) {
+    hotelName = hotel.name || '';
+    destination = hotel.city || '';
+  }
+  
+  const bookingId = dbHotel?.bookingId || dbHotel?.booking_com_property_id || null;
 
   return {
     booking: generateBookingLink(hotelName, bookingId, checkinDate, checkoutDate),
     expedia: generateExpediaLink(hotelName, destination, checkinDate, checkoutDate),
     agoda: generateAgodaLink(hotelName, destination, checkinDate, checkoutDate),
-    original: hotel.link // Keep original for reference
+    original: hotel?.link || null // Keep original for reference
   };
 }
 
