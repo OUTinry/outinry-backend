@@ -121,7 +121,7 @@ export default function searchRoutes(hotelDatabase) {
                 level: dbHotel?.certificationLevel,
                 summary: dbHotel?.certificationSummary
               },
-              affiliateLinks: createAffiliateLinks(dbHotel.name, checkInDate, checkOutDate)
+              affiliateLinks: createAffiliateLinks(hotel, dbHotel, checkInDate, checkOutDate)
             };
           })
       );
@@ -220,7 +220,7 @@ export default function searchRoutes(hotelDatabase) {
         currency: userCurrency,
         rating: hotelResult.rating,
         images: hotelResult.images,
-        affiliateLinks: createAffiliateLinks(dbHotel.name, checkInDate, checkOutDate)
+        affiliateLinks: createAffiliateLinks(hotelResult, dbHotel, checkInDate, checkOutDate)
       });
     } catch (error) {
       console.error('Hotel search error:', error);
