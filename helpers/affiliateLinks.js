@@ -1,4 +1,18 @@
 /**
+ * Remove specified search parameters from a URL
+ */
+function removeSearchParams(url, paramsToRemove) {
+  if (!url) return url;
+  try {
+    const urlObj = new URL(url);
+    paramsToRemove.forEach(param => urlObj.searchParams.delete(param));
+    return urlObj.toString();
+  } catch (e) {
+    return url;
+  }
+}
+
+/**
  * Generate Booking.com affiliate link
  * @param {string} hotelName - Name of hotel
  * @param {string} bookingId - Booking.com property ID (optional)
@@ -133,11 +147,20 @@ export function createAffiliateLinks(hotel, dbHotel = null, checkinDate = null, 
   
   const bookingId = dbHotel?.bookingId || dbHotel?.booking_com_property_id || null;
 
+  // Generate links
+  let bookingUrl = generateBookingLink(hotelName, bookingId, checkinDate, checkoutDate);
+  let expediaUrl = generateExpediaLink(hotelName, destination, checkinDate, checkoutDate);
+  let agodaUrl = generateAgodaLink(hotelName, destination, checkinDate, checkoutDate);
+
+  // Strip stale Expedia parameters that may have been added by SearchAPI or other sources
+  const expediaStaleParams = ['regionId', 'sort', 'theme', 'userIntent', 'semdtl', 'categorySearch', 'useRewards', 'button_referral_source', 'startDate', 'endDate'];
+  expediaUrl = removeSearchParams(expediaUrl, expediaStaleParams);
+
   return {
-    booking: generateBookingLink(hotelName, bookingId, checkinDate, checkoutDate),
-    expedia: generateExpediaLink(hotelName, destination, checkinDate, checkoutDate),
-    agoda: generateAgodaLink(hotelName, destination, checkinDate, checkoutDate),
-    original: hotel?.link || null // Keep original for reference
+    booking: bookingUrl,
+    expedia: expediaUrl,
+    agoda: agodaUrl,
+    original: hotel?.link || null
   };
 }
 
