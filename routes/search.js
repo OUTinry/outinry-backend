@@ -233,10 +233,17 @@ export default function searchRoutes(hotelDatabase) {
       };
 
       const apiResponse = await axios.get(searchApiUrl, { params: searchParams });
-      const hotelResult = apiResponse.data.properties?.find(h => 
-        h.name && findHotelByName(hotelDatabase, h.name) && 
-        findHotelByName(hotelDatabase, h.name).name.toLowerCase() === dbHotel.name.toLowerCase()
-      );
+      
+      // SAFETY FIX: Add null checks before calling .toLowerCase()
+      const hotelResult = apiResponse.data.properties?.find(h => {
+        if (!h.name) return false;
+        const foundHotel = findHotelByName(hotelDatabase, h.name);
+        if (!foundHotel) return false;
+        // SAFETY: Check that both names exist and are strings before calling .toLowerCase()
+        const searchName = foundHotel.name ? String(foundHotel.name).toLowerCase() : '';
+        const dbName = dbHotel.name ? String(dbHotel.name).toLowerCase() : '';
+        return searchName === dbName;
+      });
 
       if (!hotelResult) {
         return res.status(404).json({ error: 'Hotel not found in pricing data' });
