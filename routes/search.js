@@ -214,6 +214,8 @@ export default function searchRoutes(hotelDatabase) {
       const convertedPricePerNight = await convertPriceObject(hotelResult.price_per_night, userCurrency);
       const convertedTotalPrice = await convertPriceObject(hotelResult.total_price, userCurrency);
 
+      // IMPORTANT: Use backend-generated affiliate links only. Do NOT use hotelResult.link or any
+      // pre-built URLs from SearchAPI, as they contain stale affiliate IDs and date parameters.
       return res.json({
         name: hotelResult.name,
         city: hotelResult.city,
