@@ -39,6 +39,20 @@ export default function searchRoutes(hotelDatabase) {
     };
   }
 
+  // Helper function to parse dates from string format (YYYY-MM-DD) to Date object
+  function parseDate(dateString) {
+    if (!dateString) return null;
+    if (dateString instanceof Date) return dateString;
+    
+    try {
+      const [year, month, day] = dateString.split('-').map(Number);
+      return new Date(year, month - 1, day);
+    } catch (e) {
+      console.error('Error parsing date:', dateString, e);
+      return null;
+    }
+  }
+
   router.post('/', async (req, res) => {
     try {
       const { destination, checkInDate, checkOutDate, adults = 2, currency } = req.body;
@@ -56,6 +70,10 @@ export default function searchRoutes(hotelDatabase) {
       if (!checkInDate || !checkOutDate) {
         return res.status(400).json({ error: 'checkInDate and checkOutDate are required' });
       }
+
+      // Parse dates to Date objects for affiliate link generation
+      const checkInDateObj = parseDate(checkInDate);
+      const checkOutDateObj = parseDate(checkOutDate);
 
       const normalizedDestination = normalizeCityName(destination);
       console.log(`[/api/search] User input: "${destination}" → Normalized: "${normalizedDestination}"`);
@@ -105,6 +123,15 @@ export default function searchRoutes(hotelDatabase) {
             const convertedPricePerNight = await convertPriceObject(hotel.price_per_night, userCurrency);
             const convertedTotalPrice = await convertPriceObject(hotel.total_price, userCurrency);
 
+            // CRITICAL FIX: Pass Date objects, not strings, to createAffiliateLinks
+            // This ensures the affiliate link builder can format dates correctly
+            const affiliateLinks = createAffiliateLinks(
+              hotel,                    // Hotel object with name, city
+              dbHotel,                  // Database hotel record
+              checkInDateObj,           // Date object (not string!)
+              checkOutDateObj           // Date object (not string!)
+            );
+
             return {
               name: hotel.name,
               description: hotel.description,
@@ -121,7 +148,7 @@ export default function searchRoutes(hotelDatabase) {
                 level: dbHotel?.certificationLevel,
                 summary: dbHotel?.certificationSummary
               },
-              affiliateLinks: createAffiliateLinks(hotel, dbHotel, checkInDate, checkOutDate)
+              affiliateLinks: affiliateLinks
             };
           })
       );
@@ -190,6 +217,10 @@ export default function searchRoutes(hotelDatabase) {
         return res.status(404).json({ error: 'Hotel not found in verified database' });
       }
 
+      // Parse dates to Date objects for affiliate link generation
+      const checkInDateObj = parseDate(checkInDate);
+      const checkOutDateObj = parseDate(checkOutDate);
+
       const searchApiUrl = 'https://www.searchapi.io/api/v1/search';
       const searchParams = {
         engine: 'google_hotels',
@@ -214,8 +245,16 @@ export default function searchRoutes(hotelDatabase) {
       const convertedPricePerNight = await convertPriceObject(hotelResult.price_per_night, userCurrency);
       const convertedTotalPrice = await convertPriceObject(hotelResult.total_price, userCurrency);
 
+      // CRITICAL FIX: Pass Date objects, not strings, to createAffiliateLinks
       // IMPORTANT: Use backend-generated affiliate links only. Do NOT use hotelResult.link or any
       // pre-built URLs from SearchAPI, as they contain stale affiliate IDs and date parameters.
+      const affiliateLinks = createAffiliateLinks(
+        hotelResult,                // Hotel object from SearchAPI
+        dbHotel,                    // Database hotel record
+        checkInDateObj,             // Date object (not string!)
+        checkOutDateObj             // Date object (not string!)
+      );
+
       return res.json({
         name: hotelResult.name,
         city: hotelResult.city,
@@ -225,7 +264,7 @@ export default function searchRoutes(hotelDatabase) {
         currency: userCurrency,
         rating: hotelResult.rating,
         images: hotelResult.images,
-        affiliateLinks: createAffiliateLinks(hotelResult, dbHotel, checkInDate, checkOutDate)
+        affiliateLinks: affiliateLinks
       });
     } catch (error) {
       console.error('Hotel search error:', error);
