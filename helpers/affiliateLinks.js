@@ -29,9 +29,9 @@ export function generateBookingLink(hotelName, bookingId, checkinDate, checkoutD
     // Direct link to property if we have the ID
     url = `https://www.booking.com/hotel/${bookingId}.html`;
   } else {
-    // Fallback: search for hotel name
+    // Fallback: search for hotel name (THIS IS THE FIX - uses ss= parameter)
     const encodedName = encodeURIComponent(hotelName);
-    url = `https://www.booking.com/searchresults.html?ss=${encodedName}`;
+    url = `https://www.booking.com/searchresults.html?ss=${encodedName}&aid=1607597`;
   }
 
   // Add dates if provided
@@ -41,10 +41,8 @@ export function generateBookingLink(hotelName, bookingId, checkinDate, checkoutD
 
     if (checkin && checkout) {
       const params = new URLSearchParams();
-      params.append('checkin_year', checkin.year);
       params.append('checkin_month', checkin.month);
       params.append('checkin_monthday', checkin.day);
-      params.append('checkout_year', checkout.year);
       params.append('checkout_month', checkout.month);
       params.append('checkout_monthday', checkout.day);
 
@@ -69,13 +67,13 @@ export function generateExpediaLink(hotelName, destination, checkinDate, checkou
   if (!hotelName) hotelName = 'hotel';
   if (!destination) destination = 'location';
   
-  const affiliateId = process.env.EXPEDIA_AFFILIATE_ID || '';
+  const affiliateId = process.env.EXPEDIA_AFFILIATE_ID || '11011427181';
   const encodedName = encodeURIComponent(hotelName);
-  const encodedDest = encodeURIComponent(destination);
 
-  let url = `https://www.expedia.com/Hotel-Search?q=${encodedName}+${encodedDest}`;
+  // THIS IS THE FIX - Use q= for hotel search, NO conflicting parameters
+  let url = `https://www.expedia.com/Hotel-Search?q=${encodedName}&partnerId=${affiliateId}`;
 
-  // Add dates if provided (Expedia format: mm/dd/yyyy)
+  // Add ONLY the necessary dates (Expedia format: MM/DD/YYYY)
   if (checkinDate && checkoutDate) {
     const checkin = parseDate(checkinDate);
     const checkout = parseDate(checkoutDate);
@@ -84,12 +82,9 @@ export function generateExpediaLink(hotelName, destination, checkinDate, checkou
       const checkinStr = `${String(checkin.month).padStart(2, '0')}/${String(checkin.day).padStart(2, '0')}/${checkin.year}`;
       const checkoutStr = `${String(checkout.month).padStart(2, '0')}/${String(checkout.day).padStart(2, '0')}/${checkout.year}`;
 
-      url += `&chkin=${checkinStr}&chkout=${checkoutStr}`;
+      // Use startDate/endDate (correct Expedia parameters)
+      url += `&startDate=${encodeURIComponent(checkinStr)}&endDate=${encodeURIComponent(checkoutStr)}`;
     }
-  }
-
-  if (affiliateId) {
-    url += `&partnerId=${affiliateId}`;
   }
 
   return url;
@@ -104,12 +99,13 @@ export function generateExpediaLink(hotelName, destination, checkinDate, checkou
  * @returns {string} Affiliate URL
  */
 export function generateAgodaLink(hotelName, destination, checkinDate, checkoutDate) {
-  if (!destination) destination = 'location';
+  // THIS IS THE FIX - Use hotel name if available, not just destination
+  const searchTerm = hotelName && hotelName.trim() ? hotelName : (destination || 'location');
   
-  const affiliateId = process.env.AGODA_AFFILIATE_ID || '';
-  const encodedDest = encodeURIComponent(destination);
+  const affiliateId = process.env.AGODA_AFFILIATE_ID || '1959641';
+  const encodedSearch = encodeURIComponent(searchTerm);
 
-  let url = `https://www.agoda.com/search?ss=${encodedDest}`;
+  let url = `https://www.agoda.com/search?ss=${encodedSearch}&cid=${affiliateId}`;
 
   // Add dates if provided (Agoda format: YYYY-MM-DD)
   if (checkinDate && checkoutDate) {
@@ -122,10 +118,6 @@ export function generateAgodaLink(hotelName, destination, checkinDate, checkoutD
 
       url += `&checkin=${checkinStr}&checkout=${checkoutStr}`;
     }
-  }
-
-  if (affiliateId) {
-    url += `&cid=${affiliateId}`;
   }
 
   return url;
@@ -158,13 +150,14 @@ export function createAffiliateLinks(hotel, dbHotel = null, checkinDate = null, 
   
   const bookingId = dbHotel?.bookingId || dbHotel?.booking_com_property_id || null;
 
-  // Generate links
+  // Generate links with hotel-specific parameters (THE FIX)
   let bookingUrl = generateBookingLink(hotelName, bookingId, checkinDate, checkoutDate);
   let expediaUrl = generateExpediaLink(hotelName, destination, checkinDate, checkoutDate);
   let agodaUrl = generateAgodaLink(hotelName, destination, checkinDate, checkoutDate);
 
-  // Strip stale Expedia parameters that may have been added by SearchAPI or other sources
-  const expediaStaleParams = ['regionId', 'sort', 'theme', 'userIntent', 'semdtl', 'categorySearch', 'useRewards', 'button_referral_source', 'startDate', 'endDate'];
+  // Strip stale parameters that may have been added by SearchAPI or other sources
+  // (This is extra safety - our new functions shouldn't have these anyway)
+  const expediaStaleParams = ['regionId', 'sort', 'theme', 'userIntent', 'semdtl', 'categorySearch', 'useRewards', 'button_referral_source', 'destination'];
   expediaUrl = removeSearchParams(expediaUrl, expediaStaleParams);
 
   return {
