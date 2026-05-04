@@ -2,10 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname } from 'path';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { loadHotelDatabase } from './helpers/hotelDatabase.js';
+import { createClient } from '@supabase/supabase-js';
 import searchRoutes from './routes/search.js';
 
 dotenv.config();
@@ -16,6 +16,17 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Initialize Supabase
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('❌ SUPABASE_URL and SUPABASE_KEY are required in .env');
+  process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
 // Trust proxy for Render/Heroku
 app.set('trust proxy', 1);
 
@@ -24,8 +35,8 @@ app.use(helmet());
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: 'Too many requests from this IP, please try again later.'
 });
 
@@ -40,19 +51,16 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000,http:/
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow server-to-server (no origin header)
     if (!origin) {
       callback(null, true);
       return;
     }
 
-    // Check exact match
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
       return;
     }
 
-    // Check regex patterns (for Webflow preview/staging domains)
     if (
       /\.lovableproject\.com$/.test(origin) ||
       /\.lovable\.app$/.test(origin) ||
@@ -68,34 +76,41 @@ app.use(cors({
   allowedHeaders: ['Content-Type'],
 }));
 
-// Initialize on startup
 async function initialize() {
   try {
-    console.log('Loading hotel database...');
-    const dbPath = join(__dirname, process.env.HOTEL_DB_PATH || '../Hotel Database/hotels.csv');
-    const hotelDatabase = await loadHotelDatabase(dbPath);
-    console.log(`✅ Loaded ${hotelDatabase.length} verified LGBTQ+ hotels`);
+    console.log('Loading hotel database from Supabase...');
+    
+    const { data: hotelDatabase, error } = await supabase
+      .from('hotels')
+      .select('*');
+    
+    if (error) {
+      throw new Error(`Supabase query failed: ${error.message}`);
+    }
 
-    // Routes (set up AFTER database is loaded)
+    if (!hotelDatabase || hotelDatabase.length === 0) {
+      throw new Error('No hotels found in Supabase database');
+    }
+
+    console.log(`✅ Loaded ${hotelDatabase.length} verified LGBTQ+ hotels from Supabase`);
+
     app.use('/api/search', searchRoutes(hotelDatabase));
 
-    // Health check
     app.get('/health', (req, res) => {
       res.json({
         status: 'ok',
         service: 'outinry-backend',
         hotelsLoaded: hotelDatabase.length,
         environment: process.env.NODE_ENV || 'development',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        database: 'supabase'
       });
     });
 
-    // 404 handler (AFTER routes, so routes are matched first)
     app.use((req, res) => {
       res.status(404).json({ error: 'Not found' });
     });
 
-    // Error handler
     app.use((err, req, res, next) => {
       console.error('Error:', err.message);
       res.status(err.status || 500).json({
@@ -110,11 +125,11 @@ async function initialize() {
   }
 }
 
-// Start server
 initialize().then(() => {
   app.listen(PORT, () => {
     console.log(`🚀 outinry backend running on http://localhost:${PORT}`);
     console.log(`📋 Health check: http://localhost:${PORT}/health`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🗄️  Database: Supabase`);
   });
 });

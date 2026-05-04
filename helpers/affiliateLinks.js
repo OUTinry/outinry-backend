@@ -21,6 +21,8 @@ function removeSearchParams(url, paramsToRemove) {
  * @returns {string} Affiliate URL
  */
 export function generateBookingLink(hotelName, bookingId, checkinDate, checkoutDate) {
+  if (!hotelName) hotelName = 'hotel';
+  
   let url = '';
 
   if (bookingId) {
@@ -64,6 +66,9 @@ export function generateBookingLink(hotelName, bookingId, checkinDate, checkoutD
  * @returns {string} Affiliate URL
  */
 export function generateExpediaLink(hotelName, destination, checkinDate, checkoutDate) {
+  if (!hotelName) hotelName = 'hotel';
+  if (!destination) destination = 'location';
+  
   const affiliateId = process.env.EXPEDIA_AFFILIATE_ID || '';
   const encodedName = encodeURIComponent(hotelName);
   const encodedDest = encodeURIComponent(destination);
@@ -99,6 +104,8 @@ export function generateExpediaLink(hotelName, destination, checkinDate, checkou
  * @returns {string} Affiliate URL
  */
 export function generateAgodaLink(hotelName, destination, checkinDate, checkoutDate) {
+  if (!destination) destination = 'location';
+  
   const affiliateId = process.env.AGODA_AFFILIATE_ID || '';
   const encodedDest = encodeURIComponent(destination);
 
@@ -139,11 +146,15 @@ export function createAffiliateLinks(hotel, dbHotel = null, checkinDate = null, 
   
   if (typeof hotel === 'string') {
     hotelName = hotel;
-    destination = dbHotel?.city || '';
+    destination = (dbHotel?.city || dbHotel?.name || '').trim();
   } else if (typeof hotel === 'object' && hotel !== null) {
-    hotelName = hotel.name || '';
-    destination = hotel.city || '';
+    hotelName = (hotel.name || '').trim();
+    destination = (hotel.city || '').trim();
   }
+  
+  // Fallbacks for empty values
+  if (!hotelName) hotelName = 'hotel';
+  if (!destination) destination = 'location';
   
   const bookingId = dbHotel?.bookingId || dbHotel?.booking_com_property_id || null;
 
